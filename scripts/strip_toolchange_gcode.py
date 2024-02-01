@@ -7,9 +7,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument('input_file', help='Input file')
 
 args = parser.parse_args()
-correct_toolchange_macro = 'ERCF_CHANGE_TOOL_STANDALONE'
-incorrect_toolchange_macro = 'T'
-correct_toolchange_macro_found = False
+toolchange_macro = 'T'
 first_toolchange_instance = True
 lines_removed = 0
 
@@ -18,8 +16,7 @@ processed_lines = []
 with open(args.input_file, 'r') as f:
     lines = f.readlines()
     for line in lines:
-        if line.startswith(correct_toolchange_macro):
-            correct_toolchange_macro_found = True
+        if line.startswith(toolchange_macro):
             if first_toolchange_instance:
                 lines_removed += 1
                 first_toolchange_instance = False
@@ -28,14 +25,7 @@ with open(args.input_file, 'r') as f:
                 processed_lines.append(line)
                 continue
         else:
-            if correct_toolchange_macro_found:
-                if line.startswith(incorrect_toolchange_macro):
-                    lines_removed += 1
-                    continue
-                else:
-                    processed_lines.append(line)
-            else:
-                processed_lines.append(line)
+            processed_lines.append(line)
 
 with open(args.input_file, 'w') as f:
     if lines_removed > 0:
