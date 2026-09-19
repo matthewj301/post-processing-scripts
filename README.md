@@ -1,112 +1,81 @@
-# GCode Post-Processing Scripts
+# G-code post-processing scripts
 
-This is a collection of useful GCode post-processing scripts I wrote out of necessity.
+Experimental print-behavior transformations for OrcaSlicer and Klipper/Kalico,
+plus the existing heating/toolchange cleanup scripts. Physical print results,
+not report or viewer features, determine whether an aesthetics processor helps.
 
-## Installation
-Just post the full path to the script in the "Post-processing scripts" section of your slicer and make sure the scripts are executable.
+## Cosmetic-entry conditioning — first behavior-changing experiment
 
-## Scripts
-- `strip_initial_heating_gcode.py`
-  - Strips first_layer hotend heating commands from the GCode. 
-  - Useful if you use your own start GCode and don't want to heat the hotend twice.
-- `strip_toolchange_gcode.py`: 
-  - Strips toolchange commands from the GCode. 
-  - Some slicers (Orcaslicer, Prusaslicer) insert Tx commands even if you've defined your own toolchange GCode.
-    - This script removes those default toolchange commands and leaves the ones you defined.
-  - Some slicers also insert Tx commands at the beginning of your gcode file if you have multiple tools defined.
-    - I do my initial tool change in my custom start GCode, so I don't need any toolchange commands at the start of the file.
+`scripts/condition_cosmetic_entry.py` changes the last part of an interior path
+before an outer-wall/top-surface entry to match its commanded filament rate.
+Cosmetic commands remain unchanged. This tests whether changing preceding flow
+history improves the visible entry. **Physical benefit is not yet verified.**
 
+It preserves geometry and total extrusion, never speeds up interior motion, and
+skips retracted, unsupported, short or excessively slowed transitions. It is a
+fixed-length conditioning experiment, not another general slope limiter; Orca's
+existing extrusion-rate smoothing is the comparison baseline.
 
-## Layout
+Create an untouched control and conditioned test from one Orca export:
 
-- `scripts/`: executable slicer post-processing scripts.
-- `examples/`: sample invocations, slicer settings, and small example inputs.
-- `tests/`: automated tests and G-code fixtures.
-- `docs/`: script documentation and compatibility notes.
+```sh
+python3 scripts/condition_cosmetic_entry.py /path/to/coupon.gcode \
+  --ab-dir /path/to/coupon-ab --distance-mm 10
+```
 
-## Adding a script
+The new directory contains `A-control.gcode`, `B-conditioned.gcode`, and an edit
+report. Existing files are not overwritten. Zero changes returns exit code 2 and
+creates no print files. Already conditioned input is refused.
 
-Give each script a short, consistent name across source, examples, tests,
-and documentation. Document its purpose, dependencies, arguments, slicer setup,
-G-code changes, and removal in `docs/<name>.md`.
+Slice `examples/cosmetic_entry_coupon.stl` with your own printer/filament profile.
+The full A/B procedure, eligible paths, conservative limits, Orca integration and
+known limitations are in [the processor documentation](docs/cosmetic_entry_conditioning.md).
+The `.gcode` fixtures in `examples/` are synthetic software tests, not printable jobs.
 
-State explicitly which slicers and firmware dialects it supports. Record the
-versions used for testing; compatibility is unverified until tested. Explain
-whether it modifies the input file in place or writes a separate output, and
-whether running it more than once is safe.
+## Existing cleanup scripts
 
-Use small G-code fixtures to verify intended transformations and preservation of
-unrelated commands. Include relevant edge cases, such as missing markers,
-multiple tools, or an already-processed file.
+- `scripts/strip_initial_heating_gcode.py`: strips duplicate first-layer heating
+  commands when your start macro owns heating.
+- `scripts/strip_toolchange_gcode.py`: strips slicer-inserted toolchange commands
+  when your custom workflow owns tool selection.
 
-Keep printer-specific slicer profiles in their own profile repository and
-reusable firmware modules and macros in `klipper-addons`. If a post-processor
-and firmware module must ship together, keep them in a feature-specific repo.
-Scripts that need independent releases or installation can graduate to their
-own repositories.
+Use their absolute executable paths in the slicer's post-processing field. These
+legacy scripts remain independent of the new package and its dependencies.
 
+## Optional diagnostics
 
-## Aesthetics processing framework
-
-The new `src/toolpath_processors/` package provides modal G-code parsing,
-conservative state boundaries, an analysis pass, and atomic CLI file handling.
-Python 3.10+ is required; the new processor has no third-party dependencies.
-Existing strip scripts and their dependencies remain independent.
-
-First processor: `scripts/aesthetics_history.py` annotates outer-wall/top-surface
-entries and writes an extrusion-history JSON report. It preserves executable
-commands and does not cap speeds or claim a finish improvement. This is the
-measurement foundation for matched aesthetics experiments.
-
-Use the executable script's absolute path in Orca's post-processing field.
-For read-only analysis:
+`scripts/aesthetics_history.py` reports commanded state, extrusion history,
+segmentation and fitted/explicit arc geometry. Its local viewer is a debugging
+aid; Orca remains the main print preview. It does not optimize print quality or
+simulate firmware execution. No further preview expansion is part of this work.
 
 ```sh
 python3 scripts/aesthetics_history.py --report-only /path/to/print.gcode
 ```
 
-See `docs/aesthetics_history.md` for supported state, unknown-command boundaries,
-installation, report semantics, and file integrity limitations.
+See [analysis documentation](docs/aesthetics_history.md) for supported commands,
+uncertainty and report schema 3. If used together, run diagnostics after the
+behavior-changing processor so reports describe the modified file.
+
+## Development
+
+Python 3.10+. The new package has no runtime third-party dependencies.
+
+- `src/toolpath_processors/`: parsers and processing passes.
+- `scripts/`: checkout launchers usable without package installation.
+- `tests/`: behavioral and file-integrity tests.
+- `examples/`: fixtures and slicable experiment models.
+- `docs/`: per-processor instructions, limits and evidence.
 
 ```sh
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-CI runs this suite on Python 3.10, 3.12, and 3.13. Optional package installation
-with `python3 -m pip install .` provides the `aesthetics-history` entry point.
+CI tests Python 3.10, 3.12 and 3.13. Optional `python3 -m pip install .` provides
+package CLI entry points. Keep machine-specific profiles/configs in their own
+repos and firmware modules in `klipper-addons`.
 
-
-### Toolpath resolution reporting
-
-The aesthetics report now includes linear-path move counts, segment-length and
-heading-change distributions, fitted XY curves (radius, sweep, segment count,
-chord-error estimate and heuristic fit confidence), and supported explicit G2/G3
-arc geometry. Report schema is version 2. G-code behavior remains unchanged.
-
-Pass `--arc-resolution-mm` with the printer's configured value to estimate
-firmware arc subdivision; without it, that count is unknown. Curve fitting uses
-`--fit-tolerance-mm` (default 0.02). See the processor documentation for supported
-arc formats and geometric fitting limitations.
-
-
-### Commanded state, rolling history and layer viewer
-
-Report schema 3 preserves geometry across supported heater, fan, PA, acceleration
-and override commands. Cosmetic entries include a distance-weighted deposition
-history (default 50mm), preceding-feature totals, travel/retract/prime amounts,
-and dwell/unknown-wait context. Unsupported commands are explicitly reported.
-
-Generate a local interactive viewer without changing the input:
-
-```sh
-python3 scripts/aesthetics_history.py --report-only /path/to/print.gcode \
-  --history-window-mm 50 --viewer /path/to/print-viewer.html
-```
-
-Open the HTML file to select layers and inspect paths colored by segment length,
-requested speed, nominal filament speed, curvature, fan or temperature target.
-No data is uploaded. Values describe commands and estimates, not measured motion
-or thermal state. The viewer supports mouse, touch and keyboard path selection.
-
-The synthetic `examples/aesthetics_context.gcode` demonstrates the report and is
-not a runnable calibration print. Large reports retain all parsed moves in memory.
+New processors must define the intended physical effect, compare existing Orca
+functionality, preserve unrelated commands, test geometry/extrusion invariants,
+and distinguish software verification from physical evidence. Do not expand the
+viewer or analysis framework without a concrete requirement from a print test.
