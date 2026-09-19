@@ -87,3 +87,26 @@ Pass `--arc-resolution-mm` with the printer's configured value to estimate
 firmware arc subdivision; without it, that count is unknown. Curve fitting uses
 `--fit-tolerance-mm` (default 0.02). See the processor documentation for supported
 arc formats and geometric fitting limitations.
+
+
+### Commanded state, rolling history and layer viewer
+
+Report schema 3 preserves geometry across supported heater, fan, PA, acceleration
+and override commands. Cosmetic entries include a distance-weighted deposition
+history (default 50mm), preceding-feature totals, travel/retract/prime amounts,
+and dwell/unknown-wait context. Unsupported commands are explicitly reported.
+
+Generate a local interactive viewer without changing the input:
+
+```sh
+python3 scripts/aesthetics_history.py --report-only /path/to/print.gcode \
+  --history-window-mm 50 --viewer /path/to/print-viewer.html
+```
+
+Open the HTML file to select layers and inspect paths colored by segment length,
+requested speed, nominal filament speed, curvature, fan or temperature target.
+No data is uploaded. Values describe commands and estimates, not measured motion
+or thermal state. The viewer supports mouse, touch and keyboard path selection.
+
+The synthetic `examples/aesthetics_context.gcode` demonstrates the report and is
+not a runnable calibration print. Large reports retain all parsed moves in memory.

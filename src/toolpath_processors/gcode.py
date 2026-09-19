@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import math
 import re
 from .geometry import arc_geometry
+from .commands import initial_context, known_command
 
 WORD = re.compile(r'([A-Za-z])\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))')
 
@@ -19,6 +20,18 @@ class Move:
     end_xyz: tuple | None = None
     command: str = "G1"
     arc: dict | None = None
+
+    commanded_state: dict = field(default_factory=dict)
+
+    @property
+    def effective_requested_speed_mm_s(self):
+        factor = self.commanded_state.get('speed_factor')
+        return self.requested_speed_mm_s * factor if self.requested_speed_mm_s is not None and factor is not None else None
+
+    @property
+    def effective_extrusion_mm(self):
+        factor = self.commanded_state.get('extrusion_factor')
+        return self.extrusion_mm * factor if self.extrusion_mm is not None and factor is not None else None
 
     @property
     def nominal_seconds(self):
@@ -37,15 +50,20 @@ class State:
     feature: str = 'unknown'
     layer: int | None = None
 
+    context: dict = field(default_factory=initial_context)
+    event: dict | None = None
+
     def invalidate(self):
         self.position = dict.fromkeys('XYZE')
         self.absolute_xyz = self.absolute_e = None
         self.feed = None
         self.feature = 'unknown'
         self.plane = None
+        self.context = {key: None for key in self.context}
 
     def consume(self, raw, number):
         """Return (move, barrier). Source text is never rewritten."""
+        self.event = None
         stripped = raw.strip()
         for prefix in (';TYPE:', '; FEATURE:'):
             if stripped.startswith(prefix):
@@ -56,6 +74,9 @@ class State:
             return None, True
         code = raw.split(';', 1)[0].strip()
         if not code:
+            return None, False
+        self.event = known_command(code, self.context)
+        if self.event is not None:
             return None, False
         words = list(WORD.finditer(code))
         if not words or WORD.sub('', code).strip():
@@ -101,7 +122,7 @@ class State:
                 self.feed = args['F'] / 60 if args['F'] > 0 else None
             self.position.update(zip('XYZ', end))
             return Move(number, self.feature, self.layer, geometry['helical_length_mm'],
-                        extrusion, self.feed, start, end, command, geometry), False
+                        extrusion, self.feed, start, end, command, geometry, self.context.copy()), False
         elif command in ('G0', 'G1') and set(args) <= set('XYZEF') and self.millimeters:
             if 'F' in args:
                 self.feed = args['F'] / 60 if args['F'] > 0 else None
@@ -123,7 +144,7 @@ class State:
                     self.position[axis] = old + args[axis] if old is not None else None
             length = math.sqrt(sum(delta[a] ** 2 for a in 'XYZ')) if all(delta[a] is not None for a in 'XYZ') else None
             return Move(number, self.feature, self.layer, length, delta['E'], self.feed,
-                        start, tuple(self.position[a] for a in 'XYZ'), command), False
+                        start, tuple(self.position[a] for a in 'XYZ'), command, None, self.context.copy()), False
         else:
             self.invalidate()
             if command == 'G20':

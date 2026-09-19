@@ -35,9 +35,9 @@ entry. No printer configuration or firmware plugin is required.
 An entry is the first known positive-extrusion spatial move after travel,
 retraction/prime, a feature change, or a layer boundary, within a cosmetic feature.
 The JSON records the entry move, immediately preceding deposition move, travel
-distance and retracted filament since that move. This is segment history, not a
-whole-feature average or an inferred pressure/temperature state. Prime amount,
-fan settings, temperature, acceleration and actual timing are not modeled yet.
+distance and retracted filament since that move. The original preceding-segment fields remain available. Schema 3 also adds a
+distance-weighted history window, preceding-feature totals and commanded machine
+state. None of these fields infer actual pressure or temperature.
 
 Requested speed is modal F / 60. Nominal duration is length / requested speed:
 firmware acceleration and look-ahead make actual duration different. Filament
@@ -64,8 +64,8 @@ Orca `;TYPE:` and `; FEATURE:` comments identify features; both layer marker
 formats are supported. Layer numbers are zero-based marker counts, not guaranteed
 slicer display numbers. Source line numbers exclude this processor's comments.
 
-Unknown executable commands (including tool changes, unsupported arcs, custom macros, heaters,
-fans, firmware retraction, overrides and dwell) conservatively clear positions,
+Unknown executable commands (including tool changes, unsupported arcs, custom macros
+and firmware retraction) conservatively clear positions,
 modes, feed and feature/history. Reports list those barrier lines. Analysis resumes
 only when enough state and feature information is re-established. Missing history
 is null/false, never a guessed default. This intentionally sacrifices coverage;
@@ -143,3 +143,73 @@ Kalico gcode_arcs implementation inspected during development. Firmware variants
 may differ. Without the argument, estimated segment count is null. Counts for
 fitted curves are actual input G1/G0 move counts; counts for explicit arcs are
 firmware estimates. Neither is a measured executed trajectory.
+
+
+## Commanded state, history and viewer (report schema 3)
+
+Supported non-motion commands now preserve geometry while recording commanded
+state: M104/M109/M140/M190 S, M106 S (default part fan only), M107, M204 S or P+T,
+M220/M221 S, SET_PRESSURE_ADVANCE ADVANCE/SMOOTH_TIME, and SET_VELOCITY_LIMIT
+ACCEL/VELOCITY/SQUARE_CORNER_VELOCITY/MINIMUM_CRUISE_RATIO. Commands with unsupported
+parameters remain barriers; per-tool temperature/fan control and named extruders
+are not assumed. Settings are targets, not sensor readings or proof of runtime
+firmware state. Fan speed is a fraction from 0 to 1.
+
+Raw speed and extrusion remain available. Effective requested values apply known
+M220/M221 multipliers. Initial factors assume a fresh 100% override state; unknown
+commands clear them to null until explicitly set again. Velocity limits are
+recorded, but effective requested speed is not capped by them: the report does not
+simulate firmware planning. Absolute E coordinates are kept in commanded units,
+so changing M221 does not fabricate a retract or prime.
+
+Each cosmetic entry has `history`, covering the preceding 50mm of deposition by
+default (`--history-window-mm`). The oldest segment is proportionally clipped to
+the distance window. Raw/effective extrusion and nominal deposition time are
+weighted by retained length, so subdividing an identical path does not change
+these totals. Time uses requested speed times its known override, not acceleration.
+`window_filled` distinguishes a full window from partial/unknown history.
+
+`preceding_feature` aggregates deposition length and raw extrusion over the
+most recent run of the same feature/layer, including separate lines joined by
+travel. It does not infer a geometric island; adjacent same-feature islands may
+be combined. Its name can match the current feature on a later path entry.
+Travel, retract, E-only prime, explicit G4 P dwell and unknown-duration wait flags
+cover the gap since the preceding deposition. Retraction and prime are raw
+commanded filament lengths. M109/M190 and M400 flag unknown wait duration. Thermal
+waits do not discard geometry. Unknown executable commands clear all history;
+layer markers preserve rolling history but establish a new feature run at the
+next deposition. No hidden macro motion is guessed.
+
+`spatial_moves` records parsed moves, endpoints, raw/effective values and commanded
+state snapshots. `coverage` counts known endpoints and unsupported commands;
+`unsupported_commands` lists source lines and commands to explain missing data.
+This is G-code coordinate space, not a calibrated mapping to machine coordinates.
+
+Generate a self-contained local viewer:
+
+```sh
+python3 scripts/aesthetics_history.py --report-only /path/to/print.gcode \
+  --history-window-mm 50 --viewer /path/to/print-viewer.html
+```
+
+Open the HTML file in a browser. Choose a layer and color by segment length,
+requested speed with override, nominal filament speed, curvature, fan or hotend
+target. Select a path by clicking or with the slider/Previous/Next controls;
+arrow keys work when the canvas is focused. Circled cosmetic entries expose
+history. Unknown values use gray dashes; exact selected values appear in the
+inspector. Colors scale per layer, so identical colors across layers need not
+mean identical values. Curvature is fitted or commanded, never measured.
+
+The plot is an XY projection. Explicit arcs are tessellated only for display,
+independently of firmware subdivision. The file is fully local and embeds its
+report without network requests. JSON saving is available inside the viewer.
+Viewer/report/input paths must be distinct. A viewer write failure prevents
+G-code replacement, but the JSON report may already have been updated.
+
+Large files are read into memory and spatial data is retained for every parsed
+move. Report generation and viewer size grow with the input; streaming and
+large-print rendering optimization are not implemented. The synthetic
+`examples/aesthetics_context.gcode` demonstrates two layers and varied state,
+not a runnable calibration print. Motion estimation, adjacent-line timing,
+cross-layer artifact alignment and physical matched experiments remain future
+work.
