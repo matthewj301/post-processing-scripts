@@ -24,6 +24,8 @@ def main(argv=None):
     parser.add_argument('input', type=Path, help='G-code file supplied by OrcaSlicer')
     parser.add_argument('--report', type=Path, help='JSON output; default: INPUT.aesthetics.json')
     parser.add_argument('--report-only', action='store_true', help='Leave input byte-for-byte unchanged')
+    parser.add_argument('--fit-tolerance-mm', type=float, default=0.02, help='Maximum curve-fit radial residual (default: 0.02)')
+    parser.add_argument('--arc-resolution-mm', type=float, help='Configured firmware arc resolution; enables segment-count estimates')
     args = parser.parse_args(argv)
     try:
         path = args.input.resolve(strict=True)
@@ -32,7 +34,8 @@ def main(argv=None):
             raise ValueError('Report must not overwrite the input')
         original = path.read_bytes()
         if b'\0' in original: raise ValueError('Binary input is unsupported; export plain text G-code')
-        result = process(original.decode('utf-8'), annotate=not args.report_only)
+        result = process(original.decode('utf-8'), annotate=not args.report_only,
+                         fit_tolerance_mm=args.fit_tolerance_mm, arc_resolution_mm=args.arc_resolution_mm)
         # Write the report first: a report failure must not alter the print file.
         atomic_write(report, (json.dumps(result.report, indent=2, allow_nan=False) + '\n').encode())
         if not args.report_only:

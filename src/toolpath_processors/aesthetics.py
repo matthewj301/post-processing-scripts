@@ -2,6 +2,7 @@
 from dataclasses import asdict, dataclass
 import hashlib
 from .gcode import State
+from .resolution import analyze
 
 PREFIX = '; TOOLPATH_AESTHETICS_V1 '
 VISIBLE = {'outer wall', 'top surface', 'external perimeter', 'top solid infill'}
@@ -11,7 +12,7 @@ class Result:
     output: str
     report: dict
 
-def process(text: str, *, annotate: bool = True) -> Result:
+def process(text: str, *, annotate: bool = True, fit_tolerance_mm: float = 0.02, arc_resolution_mm: float | None = None) -> Result:
     lines = [line for line in text.splitlines(keepends=True) if not line.startswith(PREFIX)]
     state = State()
     events, barriers, output = [], [], []
@@ -59,10 +60,11 @@ def process(text: str, *, annotate: bool = True) -> Result:
         output.append(line)
     clean = ''.join(lines)
     return Result(''.join(output), dict(
-        schema_version=1, processor='aesthetics-history',
+        schema_version=2, processor='aesthetics-history',
         input_sha256=hashlib.sha256(clean.encode('utf-8')).hexdigest(),
         assumptions=['Input uses millimeters unless G20 is encountered.',
                      'Speeds and durations are commanded/nominal, not executed motion or measured pressure.',
                      'History records only the most recent deposition segment; no thermal model.',
                      'Unknown executable commands clear inferred state and history.'],
-        state_barrier_lines=barriers, cosmetic_entries=events))
+        state_barrier_lines=barriers, cosmetic_entries=events,
+        resolution=analyze(lines, fit_tolerance_mm=fit_tolerance_mm, arc_resolution_mm=arc_resolution_mm)))

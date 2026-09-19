@@ -50,7 +50,11 @@ alone do not establish the cause of an aesthetic defect. No speed cap is applied
 
 ## Supported subset and uncertainty
 
-G0/G1, G90/G91, M82/M83, G92 XYZE, and G21 are interpreted. Coordinates begin
+G0/G1, G90/G91, M82/M83, G92 XYZE, G21 and plane selection are interpreted.
+G2/G3 XY arcs with relative I/J center offsets and absolute XYZ are supported;
+helical Z motion is included. R-format, G18/G19 arcs and invalid arc geometry
+remain state barriers. G17 is assumed initially and must be re-established after
+an unknown command before arc analysis can resume. Coordinates begin
 unknown; XYZ and E modes must be established explicitly. Missing-axis deltas are
 zero. Relative moves can have known length without known absolute position.
 Units initially follow the Orca millimeter convention; G20 disables move analysis
@@ -60,7 +64,7 @@ Orca `;TYPE:` and `; FEATURE:` comments identify features; both layer marker
 formats are supported. Layer numbers are zero-based marker counts, not guaranteed
 slicer display numbers. Source line numbers exclude this processor's comments.
 
-Unknown executable commands (including tool changes, arcs, custom macros, heaters,
+Unknown executable commands (including tool changes, unsupported arcs, custom macros, heaters,
 fans, firmware retraction, overrides and dwell) conservatively clear positions,
 modes, feed and feature/history. Reports list those barrier lines. Analysis resumes
 only when enough state and feature information is re-established. Missing history
@@ -90,3 +94,52 @@ and extrusion changes separately. Keep the two legacy strip scripts independent.
 
 Run: `PYTHONPATH=src python3 -m unittest discover -s tests -v`.
 The example file is a synthetic parser fixture, not a machine-ready test print.
+
+
+## Resolution and curve geometry (report schema 2)
+
+`resolution.linear_deposition_paths` covers all known positive-extrusion linear
+paths, not just cosmetic entries. Travel, retraction/prime, feature/layer changes,
+coordinate resets, arcs and state barriers separate paths. Each path records:
+
+- Source start/end line, feature and layer.
+- Move count, total length and moves per millimeter.
+- Segment lengths: minimum, p10, median, p90, maximum and mean (millimeters).
+- Heading-change distribution in degrees between known adjacent 3D segments.
+- Fitted planar XY curve candidates, with segment count, radius, diameter,
+  center, direction, sweep, fitted arc length and actual polyline length.
+
+Fits use three spatially spread vertices to define a candidate circle and check
+all vertices against a radial tolerance (default 0.02mm). They require at least
+four segments, 5 degrees of sweep, consistent turning direction, no step over
+45 degrees and constant Z. Greedy candidates are capped at 256 segments and
+flagged when capped; a long circle can appear as multiple candidates. This is
+not a general CAD reconstruction or proof that a polygon was intended as an arc.
+Very shallow, short, noisy or nonplanar curves may remain unclassified.
+
+`max_chord_error_estimate_mm` is the largest angular-step sagitta plus maximum
+vertex radial residual relative to the fitted circle, not error against the
+original CAD. RMS/max radial residual and fit tolerance are reported separately.
+`fit_confidence` is a documented geometric heuristic: high means residual no more
+than a quarter of tolerance and at least 15 degrees of sweep; otherwise limited.
+It is not statistical confidence or a guarantee of surface quality.
+
+`resolution.explicit_arcs` records each supported G2/G3 command, including travel
+arcs: source line, feature, layer, extrusion, radius, diameter, center, sweep,
+direction, planar length, helical length and endpoint radial mismatch. Mismatch
+above max(0.01mm, radius * 0.0001) is treated as unsupported instead of inventing a
+circle. The original G-code is preserved even when analysis rejects it.
+
+Firmware subdivision is optional:
+
+```sh
+python3 scripts/aesthetics_history.py --report-only \
+  --arc-resolution-mm 1.0 --fit-tolerance-mm 0.02 /path/to/print.gcode
+```
+
+Use your actual `[gcode_arcs] resolution`, not the example value by default.
+The estimate is `max(1, floor(helical_length / resolution))`, matching the local
+Kalico gcode_arcs implementation inspected during development. Firmware variants
+may differ. Without the argument, estimated segment count is null. Counts for
+fitted curves are actual input G1/G0 move counts; counts for explicit arcs are
+firmware estimates. Neither is a measured executed trajectory.

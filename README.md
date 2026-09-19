@@ -74,3 +74,16 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 
 CI runs this suite on Python 3.10, 3.12, and 3.13. Optional package installation
 with `python3 -m pip install .` provides the `aesthetics-history` entry point.
+
+
+### Toolpath resolution reporting
+
+The aesthetics report now includes linear-path move counts, segment-length and
+heading-change distributions, fitted XY curves (radius, sweep, segment count,
+chord-error estimate and heuristic fit confidence), and supported explicit G2/G3
+arc geometry. Report schema is version 2. G-code behavior remains unchanged.
+
+Pass `--arc-resolution-mm` with the printer's configured value to estimate
+firmware arc subdivision; without it, that count is unknown. Curve fitting uses
+`--fit-tolerance-mm` (default 0.02). See the processor documentation for supported
+arc formats and geometric fitting limitations.
