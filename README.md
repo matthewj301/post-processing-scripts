@@ -44,3 +44,33 @@ reusable firmware modules and macros in `klipper-addons`. If a post-processor
 and firmware module must ship together, keep them in a feature-specific repo.
 Scripts that need independent releases or installation can graduate to their
 own repositories.
+
+
+## Aesthetics processing framework
+
+The new `src/toolpath_processors/` package provides modal G-code parsing,
+conservative state boundaries, an analysis pass, and atomic CLI file handling.
+Python 3.10+ is required; the new processor has no third-party dependencies.
+Existing strip scripts and their dependencies remain independent.
+
+First processor: `scripts/aesthetics_history.py` annotates outer-wall/top-surface
+entries and writes an extrusion-history JSON report. It preserves executable
+commands and does not cap speeds or claim a finish improvement. This is the
+measurement foundation for matched aesthetics experiments.
+
+Use the executable script's absolute path in Orca's post-processing field.
+For read-only analysis:
+
+```sh
+python3 scripts/aesthetics_history.py --report-only /path/to/print.gcode
+```
+
+See `docs/aesthetics_history.md` for supported state, unknown-command boundaries,
+installation, report semantics, and file integrity limitations.
+
+```sh
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+```
+
+CI runs this suite on Python 3.10, 3.12, and 3.13. Optional package installation
+with `python3 -m pip install .` provides the `aesthetics-history` entry point.
