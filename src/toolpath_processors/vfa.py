@@ -59,18 +59,23 @@ def rewrite_feed(raw, feed, default_ending='\n'):
     return code + separator + comment + ending
 
 
-def validate_edits(lines, replacements, feeds):
+def validate_edits(lines, replacements, feeds, startup_contract=None):
     """Independently replay every emitted line, including modal restoration.
 
     Each original command must leave identical state after its replacement
     block. Move geometry/E/context must be identical before the restore too.
     """
+    if startup_contract is not None:
+        startup_contract.verify_source(''.join(lines))
     original, emitted = State(), State()
     for number, raw in enumerate(lines, 1):
         before_move, before_barrier = original.consume(raw, number)
         block = replacements.get(number, raw)
         block_lines = block.splitlines(keepends=True)
         after_move, after_barrier = emitted.consume(block_lines[0], number)
+        if startup_contract is not None:
+            startup_contract.apply(original, number)
+            startup_contract.apply(emitted, number)
         if before_barrier != after_barrier:
             raise ValueError(f'VFA validation: state barrier changed at line {number}')
         if number in replacements:
@@ -173,7 +178,7 @@ def optimize_vfa(job: Job, profile: QualityProfile) -> VFAResult:
                           nominal_added_seconds=m.length_mm/actual-m.length_mm/speed))
         previous_speed, previous_segment = actual, segment
     if replacements:
-        validate_edits(lines, replacements, feeds)
+        validate_edits(lines, replacements, feeds, job.startup_contract)
     output = ''.join(replacements.get(n, raw) for n, raw in enumerate(lines, 1))
     if edits:
         ending = '\r\n' if '\r\n' in job.source else '\n'

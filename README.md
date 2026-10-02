@@ -110,6 +110,24 @@ reported as barriers. Supported arcs are absolute XY-plane I/J arcs. An
 `incomplete` validation result is not print approval. The CLI does not validate
 firmware macro behavior or certify a file safe to print.
 
+### Audited startup state
+
+`--startup-contract contract.json` supplies two narrowly scoped facts established
+by inspecting the actual printer: the speed and extrusion multipliers after one
+exact `PRINT_START` invocation. It does not skip the macro, invent coordinates,
+restore modes, or authorize later unknown commands. The file SHA-256, source
+line, and command must all match; editing or reslicing the input invalidates it.
+The recorded config fingerprint and firmware revision identify the audit evidence,
+but are not an automatic live check. Re-audit after firmware/config changes and
+when reusing an export on another printer. The CLI never contacts a printer.
+
+Contract fields are `input_sha256`, `line`, `command`, `config_sha256`,
+`firmware_revision`, `evidence`, `speed_factor`, and `extrusion_factor`.
+Coordinates, E origin, and modal feed remain unknown until the source establishes
+them. This optional contract is shared by parsing and VFA replay validation;
+default behavior remains conservative. See the
+[K3 live audit](docs/k3_optimizer_audit.md) for the first verified case.
+
 ## Experimental VFA avoidance
 
 `--apply-vfa` enables a slowdown-only pass on verified, planar outer-wall G1

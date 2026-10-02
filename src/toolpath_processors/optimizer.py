@@ -6,6 +6,7 @@ import json
 import math
 import re
 from .gcode import Move, State
+from .contracts import StartupContract
 
 
 @dataclass(frozen=True)
@@ -117,16 +118,19 @@ class Job:
     warnings: tuple[dict, ...]
     slicer_intent_segments: tuple[SlicerIntent, ...] = ()
     profile: QualityProfile = QualityProfile()
+    startup_contract: StartupContract | None = None
 
     def emit(self):
         """Preserve every source character, including comments and line endings."""
         return self.source
 
 
-def parse_job(text: str, profile: QualityProfile | None = None) -> Job:
+def parse_job(text: str, profile: QualityProfile | None = None, *, startup_contract: StartupContract | None = None) -> Job:
     profile = profile or QualityProfile()
     if '\x00' in text:
         raise ValueError('Binary G-code is unsupported')
+    if startup_contract is not None:
+        startup_contract.verify_source(text)
     state = State()
     intent_state = State()
     width = height = previous_flow = None
@@ -148,6 +152,8 @@ def parse_job(text: str, profile: QualityProfile | None = None) -> Job:
                 else: height = value
         intent_move = consume_intent(intent_state, raw, number)
         move, barrier = state.consume(raw, number)
+        if startup_contract is not None:
+            startup_contract.apply(state, number)
         if barrier:
             previous_flow = None
             if raw.split(';', 1)[0].strip():
@@ -179,7 +185,7 @@ def parse_job(text: str, profile: QualityProfile | None = None) -> Job:
                                     move.feature in {'outer wall', 'top surface', 'external perimeter', 'top solid infill'},
                                     state.absolute_xyz, state.absolute_e))
         previous_flow = flow
-    return Job(text, tuple(segments), tuple(warnings), tuple(intent_segments), profile)
+    return Job(text, tuple(segments), tuple(warnings), tuple(intent_segments), profile, startup_contract)
 
 
 def analyze_job(job: Job, profile: QualityProfile | None = None, *, details: bool = False) -> dict:
@@ -251,6 +257,9 @@ def analyze_job(job: Job, profile: QualityProfile | None = None, *, details: boo
                                'Indexed fan values have no assumed mapping to the active part-cooling fan.',
                                'Unknown macros and tool changes invalidate verified state; conditional slicer intent is separate.',
                                'No physical quality benefit or firmware execution safety is certified.'])
+    if job.startup_contract is not None:
+        report['startup_contract'] = asdict(job.startup_contract)
+        report['assumptions'].append('Startup multipliers come from the supplied audited contract; its config fingerprint is provenance, not a live firmware check.')
     if details:
         report['warnings'] = list(job.warnings)
         report['segments'] = [asdict(segment) for segment in job.segments]

@@ -4,11 +4,13 @@ import json
 from pathlib import Path
 from .optimizer import QualityProfile, analyze_job, parse_job
 from .vfa import optimize_vfa
+from .contracts import StartupContract
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('input', type=Path)
+    parser.add_argument('--startup-contract', type=Path, help='Audited startup multipliers bound to this exact input')
     parser.add_argument('--profile', type=Path, help='JSON machine/material limits')
     parser.add_argument('--report', type=Path, help='New report file; defaults to stdout')
     parser.add_argument('--apply-vfa', action='store_true', help='Apply experimental VFA slowdown; requires profile and separate output')
@@ -20,7 +22,8 @@ def main(argv=None):
             raise ValueError('--apply-vfa requires --profile and --output')
         original = args.input.read_bytes()
         profile = QualityProfile.from_json(args.profile.read_text()) if args.profile else QualityProfile()
-        job = parse_job(original.decode('utf-8'), profile)
+        contract = StartupContract.from_json(args.startup_contract.read_text()) if args.startup_contract else None
+        job = parse_job(original.decode('utf-8'), profile, startup_contract=contract)
         report = analyze_job(job, profile, details=args.details)
         output = job.emit()
         if args.apply_vfa:
