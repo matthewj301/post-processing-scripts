@@ -62,8 +62,7 @@ behavior-changing processor so reports describe the modified file.
 `scripts/quality_optimizer.py` begins the architecture in the optimizer handoff.
 It reuses the conservative modal parser, builds typed path segments, and reports
 nominal flow, adjacent deposition flow changes, tiny segments, state uncertainty,
-and optional velocity/flow limit violations. This increment is analysis only;
-it does not apply VFA avoidance or change printing behavior.
+and optional velocity/flow limit violations. Analysis is the default. An explicit experimental VFA pass is available below.
 
 ```sh
 python3 scripts/quality_optimizer.py /path/to/print.gcode \
@@ -110,6 +109,47 @@ macros/tool changes, clear inferred state; unsupported arcs are preserved and
 reported as barriers. Supported arcs are absolute XY-plane I/J arcs. An
 `incomplete` validation result is not print approval. The CLI does not validate
 firmware macro behavior or certify a file safe to print.
+
+## Experimental VFA avoidance
+
+`--apply-vfa` enables a slowdown-only pass on verified, planar outer-wall G1
+extrusions after the first layer. It requires a separate new output file and a
+profile containing explicit velocity/flow limits and measured Cartesian X/Y
+velocity bands. It never uses conditional `slicer_intent` estimates.
+
+The nested `vfa` profile fields are `x` and `y` (lists of `[low, high]` axis-speed
+bands in mm/s), `min_segment_mm`, `max_slowdown_fraction`, `clearance_mm_s`,
+`hysteresis_mm_s`, and `transition_weight`. Defaults are 5 mm, 0.15, 1 mm/s,
+1 mm/s, and 1 respectively. Bands are toolhead-axis components, not CoreXY motor
+speeds. Supply empirical bands for the actual printer/material before printing.
+
+Run the synthetic software fixture to exercise the pass:
+
+```sh
+python3 scripts/quality_optimizer.py examples/vfa_fixture.gcode \
+  --profile examples/vfa_profile.synthetic.json --apply-vfa \
+  --report /tmp/vfa-test.json --output /tmp/vfa-test.gcode
+```
+
+**The fixture and profile are software-test data, not printable G-code or machine
+recommendations.** Omitting `--apply-vfa` always produces the unchanged copy,
+even with VFA bands configured. There are no calibrated bands bundled for the U1.
+
+The pass scores candidate speeds against both axes, bounded slowdown, and the
+previous adjacent edit. Hysteresis reduces switching near a band edge. Every
+edit changes only F and immediately restores the original modal feed before
+another command. A replay checks motion/extrusion equivalence and modal-state
+restoration. Input that already exceeds configured speed/flow limits, short
+segments, arcs, relative XYZ, bridges, and unknown state are skipped. Each edit
+records source line, reason, before/after speed and flow, and nominal added time.
+Reports describe input analysis and edit validation separately. Already processed
+input is refused; always start an A/B experiment from the untouched original.
+
+This targets commanded steady-state speeds. Firmware acceleration may still
+traverse an avoided band; there is no measured surface-quality benefit yet.
+The real U1 export remains ineligible after its unresolved vendor-state barriers.
+The [vendor state audit](docs/vendor_state_contracts.md) records the source trace
+and why the optimizer does not silently ignore those commands.
 
 ## Development
 

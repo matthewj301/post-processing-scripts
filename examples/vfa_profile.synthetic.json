@@ -1,0 +1,14 @@
+{
+  "filament_diameter_mm": 1.75,
+  "max_velocity_mm_s": 300,
+  "max_flow_mm3_s": 40,
+  "vfa": {
+    "x": [[105, 125]],
+    "y": [],
+    "min_segment_mm": 5,
+    "max_slowdown_fraction": 0.15,
+    "clearance_mm_s": 1,
+    "hysteresis_mm_s": 1,
+    "transition_weight": 1
+  }
+}

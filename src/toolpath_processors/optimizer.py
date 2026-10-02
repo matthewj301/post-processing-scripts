@@ -9,14 +9,49 @@ from .gcode import Move, State
 
 
 @dataclass(frozen=True)
+class VFAProfile:
+    # Cartesian toolhead-axis bands in mm/s, not CoreXY motor speeds.
+    x: tuple = ()
+    y: tuple = ()
+    min_segment_mm: float = 5.0
+    max_slowdown_fraction: float = 0.15
+    clearance_mm_s: float = 1.0
+    hysteresis_mm_s: float = 1.0
+    transition_weight: float = 1.0
+
+    def __post_init__(self):
+        for axis in ('x', 'y'):
+            bands = getattr(self, axis)
+            if not isinstance(bands, (tuple, list)):
+                raise ValueError(f'VFA {axis} bands must be a list of [low, high] pairs')
+            for band in bands:
+                if (not isinstance(band, (tuple, list)) or len(band) != 2 or
+                        any(type(v) not in (int, float) or not math.isfinite(v) for v in band) or
+                        not 0 < band[0] < band[1]):
+                    raise ValueError(f'Invalid VFA {axis} band')
+            object.__setattr__(self, axis, tuple(tuple(band) for band in bands))
+        for key in ('min_segment_mm', 'max_slowdown_fraction', 'clearance_mm_s',
+                    'hysteresis_mm_s', 'transition_weight'):
+            value = getattr(self, key)
+            if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+                raise ValueError(f'Invalid VFA {key}')
+        if self.min_segment_mm <= 0 or self.clearance_mm_s <= 0 or not 0 < self.max_slowdown_fraction < 1:
+            raise ValueError('VFA length/clearance must be positive and slowdown fraction in (0, 1)')
+
+
+@dataclass(frozen=True)
 class QualityProfile:
     filament_diameter_mm: float = 1.75
     max_velocity_mm_s: float | None = None
     max_flow_mm3_s: float | None = None
     tiny_segment_mm: float = 0.05
+    vfa: VFAProfile | None = None
 
     def __post_init__(self):
+        if self.vfa is not None and not isinstance(self.vfa, VFAProfile):
+            raise ValueError('vfa must be a VFAProfile')
         for key, value in asdict(self).items():
+            if key == 'vfa': continue
             if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
                                       or not math.isfinite(value) or value <= 0):
                 raise ValueError(f'{key} must be a finite positive number')
@@ -28,6 +63,11 @@ class QualityProfile:
         values = json.loads(text)
         if not isinstance(values, dict) or set(values) - set(cls.__dataclass_fields__):
             raise ValueError('Profile must be an object containing only supported profile fields')
+        if values.get('vfa') is not None:
+            config = values['vfa']
+            if not isinstance(config, dict) or set(config) - set(VFAProfile.__dataclass_fields__):
+                raise ValueError('Invalid VFA profile fields')
+            values['vfa'] = VFAProfile(**config)
         return cls(**values)
 
 
@@ -66,6 +106,8 @@ class PathSegment:
     volumetric_flow_mm3_s: float | None
     flow_delta_mm3_s: float | None
     is_cosmetic: bool
+    absolute_xyz: bool | None = None
+    absolute_e: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -74,6 +116,7 @@ class Job:
     segments: tuple[PathSegment, ...]
     warnings: tuple[dict, ...]
     slicer_intent_segments: tuple[SlicerIntent, ...] = ()
+    profile: QualityProfile = QualityProfile()
 
     def emit(self):
         """Preserve every source character, including comments and line endings."""
@@ -133,13 +176,16 @@ def parse_job(text: str, profile: QualityProfile | None = None) -> Job:
             direction = tuple((b-a)/length for a, b in zip(move.start_xyz, move.end_xyz))
         segments.append(PathSegment(move, width, height, direction, duration, flow,
                                     flow - previous_flow if flow is not None and previous_flow is not None else None,
-                                    move.feature in {'outer wall', 'top surface', 'external perimeter', 'top solid infill'}))
+                                    move.feature in {'outer wall', 'top surface', 'external perimeter', 'top solid infill'},
+                                    state.absolute_xyz, state.absolute_e))
         previous_flow = flow
-    return Job(text, tuple(segments), tuple(warnings), tuple(intent_segments))
+    return Job(text, tuple(segments), tuple(warnings), tuple(intent_segments), profile)
 
 
 def analyze_job(job: Job, profile: QualityProfile | None = None, *, details: bool = False) -> dict:
-    profile = profile or QualityProfile()
+    profile = profile or job.profile
+    if profile.filament_diameter_mm != job.profile.filament_diameter_mm:
+        raise ValueError('Reparse the job when changing filament diameter')
     violations, unknown, tiny = [], [], []
     for segment in job.segments:
         move = segment.move
