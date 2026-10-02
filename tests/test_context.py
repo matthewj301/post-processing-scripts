@@ -49,7 +49,7 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(report['cosmetic_entries'][0]['history']['covered_deposition_mm'],0)
         self.assertEqual(report['unsupported_commands'][0]['command'],'CUSTOM_THING')
     def test_invalid_command_is_not_partially_applied(self):
-        for command in ('M106 P2 S128','M220 S0','SET_PRESSURE_ADVANCE ADVANCE=0.1 UNKNOWN=1','M104 SNaN', 'SET_VELOCITY_LIMIT ACCEL=0', 'SET_VELOCITY_LIMIT MINIMUM_CRUISE_RATIO=1'):
+        for command in ('M106 P-1 S128','M220 S0','SET_PRESSURE_ADVANCE ADVANCE=0.1 UNKNOWN=1','M104 SNaN', 'SET_VELOCITY_LIMIT ACCEL=0', 'SET_VELOCITY_LIMIT MINIMUM_CRUISE_RATIO=1'):
             report=process(HEADER+command+'\n').report
             self.assertEqual(len(report['unsupported_commands']),1,command)
     def test_m204_pt_and_limits(self):

@@ -10,6 +10,7 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.scripts]
+quality-optimizer = "toolpath_processors.optimizer_cli:main"
 cosmetic-entry-conditioning = "toolpath_processors.conditioning_cli:main"
 aesthetics-history = "toolpath_processors.cli:main"
 
