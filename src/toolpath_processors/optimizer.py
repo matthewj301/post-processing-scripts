@@ -7,6 +7,7 @@ import math
 import re
 from .gcode import Move, State
 from .contracts import StartupContract
+from .dynamics import analyze_dynamics
 
 
 @dataclass(frozen=True)
@@ -257,6 +258,7 @@ def analyze_job(job: Job, profile: QualityProfile | None = None, *, details: boo
                                'Indexed fan values have no assumed mapping to the active part-cooling fan.',
                                'Unknown macros and tool changes invalidate verified state; conditional slicer intent is separate.',
                                'No physical quality benefit or firmware execution safety is certified.'])
+    report['extrusion_dynamics'] = analyze_dynamics(job, details=details)
     if job.startup_contract is not None:
         report['startup_contract'] = asdict(job.startup_contract)
         report['assumptions'].append('Startup multipliers come from the supplied audited contract; its config fingerprint is provenance, not a live firmware check.')

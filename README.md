@@ -191,3 +191,26 @@ New processors must define the intended physical effect, compare existing Orca
 functionality, preserve unrelated commands, test geometry/extrusion invariants,
 and distinguish software verification from physical evidence. Do not expand the
 viewer or analysis framework without a concrete requirement from a print test.
+
+### Extrusion dynamics diagnostics
+
+Analysis reports now include `extrusion_dynamics`; this is read-only and does
+not require nonlinear PA or a particular Kalico branch. It reports nominal
+adjacent flow jumps, commanded PA/acceleration/smoothing coverage, and moves
+whose nominal duration is shorter than the commanded smoothing window.
+`--details` includes every eligible extrusion move; summary samples are bounded.
+
+Straight-path ramp scenarios report zero-to-requested-speed time, the distance
+needed to reach that speed and stop, and unsmoothed linear-PA extra filament
+speed (`PA × E/path × acceleration`). These are analytical scenarios, not
+firmware trajectory predictions or calibrated hardware limits. Missing settings
+remain unknown; no firmware defaults are assumed. Flow differences are not
+reported as flow slew rates because actual transition timing is unknown.
+
+Next validation: capture the target printer's firmware revision, PA, smoothing,
+input shaper and motion settings; analyze a representative export; then compare
+controlled coupons across flow and acceleration at fixed material/temperature.
+Separate model mismatch from extruder saturation before scheduling PA changes
+or altering extrusion. Keep firmware responsible for real-time PA execution;
+nonlinear PA remains optional. Sensor diameter correction and any future
+postprocessor compensation need explicit ownership to avoid double correction.
