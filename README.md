@@ -171,6 +171,10 @@ and why the optimizer does not silently ignore those commands.
 
 ## Development
 
+The [OrcaSlicer plugin integration direction](docs/orca_plugin_direction.md)
+records the 2.5.0 alpha assessment: retain the independent processing core and
+start with a thin local plugin adapter when integration work begins.
+
 Python 3.10+. The new package has no runtime third-party dependencies.
 
 - `src/toolpath_processors/`: parsers and processing passes.
