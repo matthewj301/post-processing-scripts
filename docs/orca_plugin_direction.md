@@ -56,3 +56,46 @@ minimal local adapter around existing diagnostics first. Check no-op output
 integrity, configuration mapping, error handling, and processing order before
 exposing behavior-changing passes. Continue controlled physical A/B testing as
 the evidence gate for print-quality claims.
+
+## Analysis adapter (2026-10-18)
+
+Build with `python3 scripts/build_orca_plugin.py`. This produces
+`dist/orca_quality_analysis-0.1.0-py3-none-any.whl`, containing the thin adapter
+and an unchanged private copy of the analysis modules. No third-party Python
+packages or network service are needed. The standalone CLI remains independent.
+
+In an Orca build supporting the 2.5.0-alpha API:
+
+1. Open Plugins and install the local wheel.
+2. Select **Quality analysis (read-only)** under Process > Others > Slicing
+   Pipeline Plugin (Advanced mode).
+3. Slice and export G-code. The adapter runs at `psGCodePostProcess`, after
+   classic post-processing scripts; export and upload can invoke it separately.
+4. In Plugins, run **Show latest quality analysis**. It displays the latest
+   in-memory report in a native dialog. No report survives an app restart.
+
+The worker hook makes no UI calls, writes no files, does not contact a printer,
+never invokes transformation passes, and verifies the input bytes again after
+analysis. Failures return a recoverable plugin error and replace the previous
+result so a stale success cannot be mistaken for the current export. A report
+identifies its output name and input hash; it describes that export, not later
+project edits or downstream changes by other plugins. Run this adapter last
+when other pipeline post-processors are enabled.
+
+The first version assumes 1.75 mm filament and rejects other diameters when
+provided by the context. Missing diameter is explicitly labeled as an
+assumption. No machine limits, inferred firmware defaults or startup contracts
+are mapped automatically. Macro barriers remain unknown; conditional slicer
+intent is never substituted for verified analysis. Binary G-code is unsupported.
+The diagnostics run synchronously on the slicing worker, so large jobs add
+export latency and memory use. The native report is deliberately bounded.
+
+Verification covers the actual wheel imported against a stub of the documented
+Orca API, byte-preservation over the fixture corpus, deterministic wheel hashes,
+errors, unsupported diameter, repeated exports, and external file changes.
+This is adapter-contract testing, not proof of loading in a native Orca build.
+Native installation and export/UI smoke testing remain required.
+
+API references checked October 18, 2026:
+- https://github.com/OrcaSlicer/OrcaSlicer/wiki/plugin_development
+- https://github.com/OrcaSlicer/OrcaSlicer/wiki/slicing

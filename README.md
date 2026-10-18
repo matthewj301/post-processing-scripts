@@ -218,3 +218,13 @@ Separate model mismatch from extruder saturation before scheduling PA changes
 or altering extrusion. Keep firmware responsible for real-time PA execution;
 nonlinear PA remains optional. Sensor diameter correction and any future
 postprocessor compensation need explicit ownership to avoid double correction.
+
+### OrcaSlicer 2.5 alpha plugin
+
+Build the read-only integration with `python3 scripts/build_orca_plugin.py`.
+Install the resulting wheel from `dist/` through Orca's Plugins menu, enable
+**Quality analysis (read-only)** in the slicing pipeline, export G-code, then run
+**Show latest quality analysis** from Plugins. It reports existing diagnostics
+without changing G-code. See [adapter setup and limitations](docs/orca_plugin_direction.md#analysis-adapter-2026-10-18).
+Native Orca loading/export verification is still pending; automated tests use
+an API stub and the actual packaged wheel.
